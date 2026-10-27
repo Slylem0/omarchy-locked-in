@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "id": "slylem0.locked-in",
+  "name": "Locked In",
+  "version": "1.0.0",
+  "author": "Pablo Nicolás Marín",
+  "license": "MIT",
+  "description": "Focus blocks in your Omarchy bar: a Pomodoro timer that mutes notifications, shields you from distracting apps and tracks time per project.",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Locked In",
+    "description": "Focus timer with per-project history: start a block, see what's left, open your stats",
+    "category": "Productivity",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "language": "auto",
+      "style": "line",
+      "focusMinutes": 25,
+      "shortBreakMinutes": 5,
+      "longBreakMinutes": 15,
+      "longBreakEvery": 4,
+      "autoStartBreaks": true,
+      "autoStartFocus": false,
+      "silenceNotifications": true,
+      "distractionAction": "warn",
+      "blocklist": "youtube, discord, steam, reddit, x.com, instagram, twitch",
+      "islandPosition": "bar"
+    },
+    "schema": [
+      { "key": "language", "type": "enum", "label": "Language", "options": ["auto", "en", "es"], "defaultValue": "auto",
+        "description": "auto follows the system locale; en and es force English or Spanish." },
+      { "key": "style", "type": "enum", "label": "Bar style", "options": ["line", "ring"], "defaultValue": "line",
+        "description": "line shows the project and a progress bar; ring is a small ring and the time." },
+      { "key": "focusMinutes", "type": "integer", "label": "Focus block (minutes)", "defaultValue": 25,
+        "description": "Length of a focus block. 5 to 120." },
+      { "key": "shortBreakMinutes", "type": "integer", "label": "Short break (minutes)", "defaultValue": 5,
+        "description": "Break after each focus block. 1 to 30." },
+      { "key": "longBreakMinutes", "type": "integer", "label": "Long break (minutes)", "defaultValue": 15,
+        "description": "Longer break after several blocks. 5 to 60." },
+      { "key": "longBreakEvery", "type": "integer", "label": "Long break every", "defaultValue": 4,
+        "description": "Number of focus blocks before a long break. 2 to 8." },
+      { "key": "autoStartBreaks", "type": "boolean", "label": "Start breaks automatically", "defaultValue": true,
+        "description": "Start the break as soon as a focus block ends." },
+      { "key": "autoStartFocus", "type": "boolean", "label": "Start focus automatically", "defaultValue": false,
+        "description": "Start the next focus block as soon as a break ends." },
+      { "key": "silenceNotifications", "type": "boolean", "label": "Silence notifications", "defaultValue": true,
+        "description": "Turn on do-not-disturb during focus blocks and show what arrived when the block ends." },
+      { "key": "distractionAction", "type": "enum", "label": "When a distraction opens", "options": ["warn", "hide", "close", "off"], "defaultValue": "warn",
+        "description": "warn asks you, hide moves the window away until the block ends, close closes it, off does nothing." },
+      { "key": "blocklist", "type": "string", "label": "Distractions", "defaultValue": "youtube, discord, steam, reddit, x.com, instagram, twitch",
+        "description": "Comma-separated words matched against window classes and titles, so YouTube in a browser counts too." },
+      { "key": "islandPosition", "type": "enum", "label": "Island position", "options": ["bar", "below"], "defaultValue": "bar",
+        "description": "bar grows the island over the centre of the bar; below shows it just under the bar." }
+    ]
+  }
+}
