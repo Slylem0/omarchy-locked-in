@@ -98,6 +98,170 @@ function settingsFromShellConfig(text, id) {
   return null
 }
 
+// --- Focus/break state machine ------------------------------------------------
+//
+// next() decides; Service.qml carries out the effects it returns. Time is kept
+// as an absolute endsAt so a shell restart or a suspend never loses count.
+
+var MINUTE = 60000
+var PHASES = ["idle", "focus", "short", "long"]
+
+function initialState() {
+  return { phase: "idle", running: false, endsAt: 0, remainingMs: 0, durationMs: 0,
+    cycle: 0, project: "", startedAt: 0, dndBefore: null, blocked: 0 }
+}
+
+function phaseMs(phase, settings) {
+  if (phase === "focus") return settings.focusMinutes * MINUTE
+  if (phase === "short") return settings.shortBreakMinutes * MINUTE
+  if (phase === "long") return settings.longBreakMinutes * MINUTE
+  return 0
+}
+
+function remainingMs(state, now) {
+  if (state.phase === "idle") return 0
+  return state.running ? Math.max(0, state.endsAt - now) : state.remainingMs
+}
+
+function copy(state) {
+  var out = {}
+  for (var k in state) out[k] = state[k]
+  return out
+}
+
+function enter(state, phase, at, running, settings) {
+  var st = copy(state)
+  var ms = phaseMs(phase, settings)
+  st.phase = phase
+  st.running = running
+  st.startedAt = at
+  st.durationMs = ms
+  st.endsAt = running ? at + ms : 0
+  st.remainingMs = running ? 0 : ms
+  if (phase === "focus") st.blocked = 0
+  return st
+}
+
+function entryFor(state, end, completed, ms) {
+  return { start: state.startedAt, end: end, kind: state.phase, project: state.project,
+    completed: completed, ms: ms, blocked: state.phase === "focus" ? (state.blocked || 0) : 0 }
+}
+
+function startFocus(state, at, settings, effects) {
+  if (settings.silenceNotifications) effects.push({ type: "silence-on" })
+  effects.push({ type: "island", face: "start" })
+  return enter(state, "focus", at, true, settings)
+}
+
+function endFocus(state, end, completed, ms, settings, effects) {
+  effects.push({ type: "record", entry: entryFor(state, end, completed, ms) })
+  if (settings.silenceNotifications) effects.push({ type: "silence-off", restore: state.dndBefore === true })
+  effects.push({ type: "release-hidden" })
+}
+
+function afterFocus(state, end, completed, settings, effects) {
+  var st = copy(state)
+  if (completed) st.cycle = state.cycle + 1
+  var kind = completed && st.cycle % settings.longBreakEvery === 0 ? "long" : "short"
+  effects.push({ type: "island", face: "done" })
+  return enter(st, kind, end, settings.autoStartBreaks, settings)
+}
+
+function afterBreak(state, end, settings, effects) {
+  var st = copy(state)
+  if (state.phase === "long") st.cycle = 0
+  if (settings.autoStartFocus) return startFocus(st, end, settings, effects)
+  var idle = initialState()
+  idle.cycle = st.cycle
+  idle.project = st.project
+  idle.dndBefore = st.dndBefore
+  return idle
+}
+
+function next(state, event, now, settings) {
+  var effects = []
+  var st = state
+  var left = remainingMs(state, now)
+
+  switch (event.type) {
+  case "dnd":
+    st = copy(state)
+    st.dndBefore = event.value === true
+    break
+  case "start":
+    if (state.phase === "focus") break
+    st = copy(state)
+    if (event.project) st.project = event.project
+    st = startFocus(st, now, settings, effects)
+    break
+  case "pause":
+    if (!state.running || state.phase === "idle") break
+    st = copy(state)
+    st.running = false
+    st.remainingMs = left
+    break
+  case "resume":
+    if (state.running || state.phase === "idle") break
+    st = copy(state)
+    st.running = true
+    st.endsAt = now + state.remainingMs
+    break
+  case "blocked":
+    if (state.phase !== "focus") break
+    st = copy(state)
+    st.blocked = (state.blocked || 0) + 1
+    break
+  case "tick":
+    if (!state.running || state.phase === "idle" || now < state.endsAt) break
+    if (state.phase === "focus") {
+      endFocus(state, state.endsAt, true, state.durationMs, settings, effects)
+      st = afterFocus(state, state.endsAt, true, settings, effects)
+    } else {
+      effects.push({ type: "record", entry: entryFor(state, state.endsAt, true, state.durationMs) })
+      st = afterBreak(state, state.endsAt, settings, effects)
+    }
+    break
+  case "skip":
+    if (state.phase === "focus") {
+      endFocus(state, now, false, state.durationMs - left, settings, effects)
+      st = afterFocus(state, now, false, settings, effects)
+    } else if (state.phase !== "idle") {
+      st = afterBreak(state, now, settings, effects)
+    }
+    break
+  case "stop":
+    if (state.phase === "focus") endFocus(state, now, false, state.durationMs - left, settings, effects)
+    if (state.phase !== "idle") {
+      st = initialState()
+      st.project = state.project
+      st.dndBefore = state.dndBefore
+    }
+    break
+  }
+  return { state: st, effects: effects }
+}
+
+// Picks a saved state back up after a shell restart, closing every phase that
+// ended while the shell was down at the time it really ended.
+function rehydrate(saved, now, settings) {
+  if (!saved || typeof saved !== "object" || PHASES.indexOf(saved.phase) < 0 || saved.phase === "idle") {
+    var idle = initialState()
+    if (saved && typeof saved.project === "string") idle.project = saved.project
+    if (saved && typeof saved.cycle === "number" && PHASES.indexOf(saved.phase) >= 0) idle.cycle = saved.cycle
+    return { state: idle, effects: [] }
+  }
+  var st = copy(initialState())
+  for (var k in saved) st[k] = saved[k]
+  var effects = []
+  for (var i = 0; i < 16; i++) {
+    var r = next(st, { type: "tick" }, now, settings)
+    if (r.effects.length === 0) break
+    st = r.state
+    effects = effects.concat(r.effects)
+  }
+  return { state: st, effects: effects }
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     PLUGIN_ID: PLUGIN_ID,
@@ -106,6 +270,10 @@ if (typeof module !== "undefined") {
     language: language,
     tr: tr,
     cleanSettings: cleanSettings,
-    settingsFromShellConfig: settingsFromShellConfig
+    settingsFromShellConfig: settingsFromShellConfig,
+    initialState: initialState,
+    next: next,
+    remainingMs: remainingMs,
+    rehydrate: rehydrate
   }
 }
