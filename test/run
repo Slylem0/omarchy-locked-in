@@ -1,6 +1,6 @@
 #!/bin/bash
 # Stub bodies are single-quoted on purpose: they expand when the stub runs.
-# shellcheck disable=SC2016,SC2015
+# shellcheck disable=SC2016,SC2015,SC2001
 
 # Runs bin/locked-in against stubbed omarchy-shell, hyprctl and a fake /proc,
 # so nothing touches the real shell, notifications or Hyprland. Then validates
@@ -15,7 +15,7 @@ SANDBOX=$(mktemp -d)
 trap 'rm -rf "$SANDBOX"' EXIT
 
 STUBS="$SANDBOX/stubs"
-LOG="$SANDBOX/log"
+export LOG="$SANDBOX/log"
 mkdir -p "$STUBS"
 : >"$LOG"
 
@@ -30,6 +30,104 @@ stub() {
   printf '#!/bin/bash\n%s\n' "$2" >"$STUBS/$1"
   chmod +x "$STUBS/$1"
 }
+
+# --- bin/locked-in -------------------------------------------------------------
+
+CLI="$ROOT/bin/locked-in"
+export XDG_STATE_HOME="$SANDBOX/state"
+export LOCKED_IN_PROC="$SANDBOX/proc"
+export LOCKED_IN_LANG=en
+export HOME="$SANDBOX/home"
+mkdir -p "$XDG_STATE_HOME/locked-in" "$HOME"
+PATH="$STUBS:$PATH"
+
+# The focused window comes from $STUB_WINDOW (hyprctl activewindow -j).
+stub hyprctl 'if [[ $1 == activewindow ]]; then printf "%s" "${STUB_WINDOW:-{\}}"; fi'
+stub omarchy-shell 'printf "shell" >>"$LOG"; printf " [%s]" "$@" >>"$LOG"; echo >>"$LOG"; printf "%s" "${STUB_SHELL_REPLY-ok}"'
+
+# fake_proc PID COMM CWD [CHILD...]: one process in the fake /proc.
+fake_proc() {
+  local pid=$1 comm=$2 cwd=$3
+  shift 3
+  mkdir -p "$LOCKED_IN_PROC/$pid/task/$pid"
+  echo "$comm" >"$LOCKED_IN_PROC/$pid/comm"
+  ln -sfn "$cwd" "$LOCKED_IN_PROC/$pid/cwd"
+  echo "$*" >"$LOCKED_IN_PROC/$pid/task/$pid/children"
+}
+
+reset_proc() { rm -rf "$LOCKED_IN_PROC" "$XDG_STATE_HOME/locked-in/history.jsonl"; mkdir -p "$LOCKED_IN_PROC"; : >"$LOG"; }
+
+check() { # check NAME EXPECTED ACTUAL
+  if [[ $2 == "$3" ]]; then ok "$1"; else fail "$1" "expected: $2"$'\n'"got:      $3"; fi
+}
+
+REPO="$SANDBOX/work/omarchy-screenshot-clip"
+mkdir -p "$REPO/src" && git -C "$REPO" init -q
+PLAIN="$SANDBOX/work/mi proyecto"
+mkdir -p "$PLAIN"
+
+reset_proc
+fake_proc 100 kitty "$HOME" 200
+fake_proc 200 zsh "$REPO/src" 300
+fake_proc 300 nvim "$REPO/src"
+export STUB_WINDOW='{"class":"kitty","title":"nvim","pid":100}'
+check "project comes from the terminal's git repo" "omarchy-screenshot-clip" "$("$CLI" project)"
+
+reset_proc
+fake_proc 100 kitty "$HOME" 200
+fake_proc 200 bash "$PLAIN"
+check "project falls back to the folder name" "mi proyecto" "$("$CLI" project)"
+
+reset_proc
+fake_proc 100 kitty "$HOME" 200
+fake_proc 200 zsh "$REPO" 300
+fake_proc 300 ssh "$SANDBOX"
+check "ssh child uses the shell's cwd" "omarchy-screenshot-clip" "$("$CLI" project)"
+
+reset_proc
+mkdir -p "$HOME/Projects/expose"
+fake_proc 100 code "$HOME"
+export STUB_WINDOW='{"class":"code","title":"Island.qml - expose - Visual Studio Code","pid":100}'
+check "project comes from an editor title" "expose" "$("$CLI" project)"
+
+reset_proc
+fake_proc 100 chromium "$HOME"
+export STUB_WINDOW='{"class":"chromium","title":"Inbox","pid":100}'
+printf '%s\n%s\n' '{"start":1,"end":2,"kind":"focus","project":"dotfiles","completed":true,"ms":1}' \
+  '{"start":3,"end":4,"kind":"short","project":"","completed":true,"ms":1}' >"$XDG_STATE_HOME/locked-in/history.jsonl"
+check "project falls back to the last one used" "dotfiles" "$("$CLI" project)"
+
+reset_proc
+mkdir -p "$LOCKED_IN_PROC/9/fdinfo"
+fake_proc 100 brave "$HOME" 200
+fake_proc 200 brave "$LOCKED_IN_PROC/9/fdinfo"
+export STUB_WINDOW='{"class":"brave-browser","title":"Inbox","pid":100}'
+printf '%s\n' '{"start":1,"end":2,"kind":"focus","project":"dotfiles","completed":true,"ms":1}' >"$XDG_STATE_HOME/locked-in/history.jsonl"
+check "sandboxed browser processes are ignored" "dotfiles" "$("$CLI" project)"
+
+reset_proc
+export STUB_WINDOW='{}'
+check "no project prints nothing" "" "$("$CLI" project)"
+
+reset_proc
+"$CLI" start "mi proyecto" >/dev/null
+check "start forwards to the shell" "shell [slylem0.locked-in] [start] [mi proyecto]" "$(cat "$LOG")"
+
+reset_proc
+STUB_SHELL_REPLY="" "$CLI" pause >/dev/null 2>&1
+check "commands fail when the service is not running" "1" "$(STUB_SHELL_REPLY="" "$CLI" pause >/dev/null 2>&1; echo $?)"
+
+reset_proc
+# Blocks just after today's midnight, so the streak is 1 whatever the time.
+day=$(($(date -d "today 00:00" +%s) * 1000))
+{
+  for i in 1 2 3; do printf '{"start":%s,"end":%s,"kind":"focus","project":"api","completed":true,"ms":1500000}\n' $((day + i * 1000)) $((day + i * 1000 + 1500000)); done
+  printf '{"start":%s,"end":%s,"kind":"focus","project":"web","completed":true,"ms":1500000}\n' $((day + 5000)) $((day + 1505000))
+} >"$XDG_STATE_HOME/locked-in/history.jsonl"
+out=$("$CLI" stats)
+grep -q "api .*██████████████ *1h 15m" <<<"$out" && grep -q "web .*█████░░░░░░░░░ *25m" <<<"$out" &&
+  grep -q "4 blocks" <<<"$out" && grep -q "streak 1 day" <<<"$out" &&
+  ok "stats prints bars per project" || fail "stats prints bars per project" "$out"
 
 # --- manifest ----------------------------------------------------------------
 

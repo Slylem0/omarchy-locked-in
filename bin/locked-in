@@ -1,0 +1,191 @@
+#!/bin/bash
+
+# locked-in: command line for the Locked In focus timer.
+#
+# The timer itself runs inside the Omarchy shell (Service.qml); this script
+# forwards controls to it over IPC, guesses which project you are working on,
+# and prints your recent focus time as text.
+#
+# Usage:
+#   locked-in start [project]        start a focus block
+#   locked-in pause|resume|toggle    pause or resume the current phase
+#   locked-in skip|stop              skip to the next phase, or stop
+#   locked-in status                 current state as JSON
+#   locked-in panel                  open the dashboard
+#   locked-in project                the project in the focused window
+#   locked-in stats [--week|--month] focus time per project
+#
+# LOCKED_IN_LANG=es|en forces the language of the text output.
+
+set -o pipefail
+
+PLUGIN_ID="slylem0.locked-in"
+PROC="${LOCKED_IN_PROC:-/proc}"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/locked-in"
+HISTORY="$STATE_DIR/history.jsonl"
+
+spanish() {
+  case "${LOCKED_IN_LANG:-auto}" in
+  es) return 0 ;;
+  en) return 1 ;;
+  esac
+  [[ ${LC_ALL:-${LC_MESSAGES:-${LANG:-}}} == es* ]]
+}
+
+msg() {
+  if spanish; then echo "$1"; else echo "$2"; fi
+}
+
+# --- project detection --------------------------------------------------------
+
+# Remote sessions keep the local shell's folder, which says nothing about
+# the project on the other side; stop the walk above them.
+remote() {
+  [[ $1 =~ ^(ssh|mosh|mosh-client|et|tmate)$ ]]
+}
+
+# Folder of the deepest local process under the focused window.
+window_cwd() {
+  local pid=$1 cwd="" dir child comm
+  while [[ -n $pid && -d $PROC/$pid ]]; do
+    comm=$(<"$PROC/$pid/comm")
+    remote "$comm" && break
+    # Browser sandboxes park their processes in a folder under /proc.
+    dir=$(readlink "$PROC/$pid/cwd" 2>/dev/null) && [[ $dir != "$PROC"/* ]] && cwd=$dir
+    child=$(awk '{print $NF}' "$PROC/$pid/task/$pid/children" 2>/dev/null)
+    pid=$child
+  done
+  echo "$cwd"
+}
+
+name_for_dir() {
+  local dir=$1 top
+  [[ -z $dir || $dir == / || $dir == "$HOME" ]] && return 1
+  top=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null) || top=$dir
+  basename -- "$top"
+}
+
+# Editors keep the project in their title, e.g. "file - expose - Visual Studio Code".
+name_from_title() {
+  local title=$1 root dir
+  for root in "$HOME/Projects" "$HOME/projects" "$HOME/code" "$HOME/src"; do
+    [[ -d $root ]] || continue
+    for dir in "$root"/*/; do
+      dir=$(basename -- "$dir")
+      [[ ${#dir} -gt 1 && $title == *"$dir"* ]] && { echo "$dir"; return 0; }
+    done
+  done
+  return 1
+}
+
+last_project() {
+  [[ -f $HISTORY ]] || return 1
+  jq -Rr 'fromjson? | select(type == "object" and (.project | type) == "string" and .project != "") | .project' \
+    "$HISTORY" 2>/dev/null | tail -n1
+}
+
+project() {
+  local window pid title name
+  window=$(hyprctl activewindow -j 2>/dev/null)
+  pid=$(jq -r '.pid // empty' <<<"$window" 2>/dev/null)
+  title=$(jq -r '.title // empty' <<<"$window" 2>/dev/null)
+
+  if [[ -n $pid ]] && name=$(name_for_dir "$(window_cwd "$pid")"); then
+    echo "$name"
+  elif [[ -n $title ]] && name=$(name_from_title "$title"); then
+    echo "$name"
+  else
+    last_project || true
+  fi
+}
+
+# --- controls -----------------------------------------------------------------
+
+control() {
+  local reply
+  reply=$(omarchy-shell "$PLUGIN_ID" "$@" 2>/dev/null)
+  if [[ -z $reply ]]; then
+    msg "Locked In no está activo. Actívalo con: omarchy plugin enable $PLUGIN_ID" \
+      "Locked In is not running. Enable it with: omarchy plugin enable $PLUGIN_ID" >&2
+    exit 1
+  fi
+  echo "$reply"
+}
+
+# --- stats ----------------------------------------------------------------------
+
+bar() {
+  local filled=$1 width=14 out="" i
+  for ((i = 0; i < width; i++)); do
+    if ((i < filled)); then out+="█"; else out+="░"; fi
+  done
+  echo "$out"
+}
+
+duration() {
+  local m=$1
+  if ((m < 60)); then echo "${m}m"; else printf '%dh %02dm\n' $((m / 60)) $((m % 60)); fi
+}
+
+streak() {
+  local days day count=0
+  days=$(jq -Rr 'fromjson? | select(type == "object" and .kind == "focus" and .completed == true and (.start | type) == "number")
+    | (.start / 1000 | floor | strflocaltime("%Y-%m-%d"))' "$HISTORY" 2>/dev/null | sort -u)
+  day=$(date +%F)
+  grep -qx "$day" <<<"$days" || day=$(date -d "$day -1 day" +%F)
+  while grep -qx "$day" <<<"$days"; do
+    count=$((count + 1))
+    day=$(date -d "$day -1 day" +%F)
+  done
+  echo "$count"
+}
+
+stats() {
+  local days=7 label since rows max total blocks n project minutes width
+  case "${1:-}" in
+  --month) days=30; label=$(msg "Últimos 30 días" "Last 30 days") ;;
+  *) label=$(msg "Últimos 7 días" "Last 7 days") ;;
+  esac
+  [[ -f $HISTORY ]] || { msg "Aún no hay bloques." "No blocks yet."; return 0; }
+
+  since=$(($(date -d "today -$((days - 1)) days 00:00" +%s) * 1000))
+  rows=$(jq -Rr --argjson since "$since" '
+    fromjson? | select(type == "object" and .kind == "focus" and (.start | type) == "number" and .start >= $since)
+    | [(.project // "" | if . == "" then "-" else . end), ((.ms // (.end - .start)) / 60000), (if .completed == true then 1 else 0 end)]
+    | @tsv' "$HISTORY" 2>/dev/null |
+    awk -F'\t' '{ m[$1] += $2; b += $3 } END { for (p in m) printf "%s\t%d\n", p, m[p] + 0.5; printf "\t%d\n", b }')
+  blocks=$(tail -n1 <<<"$rows" | cut -f2)
+  rows=$(head -n -1 <<<"$rows" | sort -t$'\t' -k2,2nr -k1,1)
+  [[ -z $rows ]] && { msg "Sin bloques en este periodo." "No blocks in this period."; return 0; }
+
+  max=$(head -n1 <<<"$rows" | cut -f2)
+  width=$(cut -f1 <<<"$rows" | awk '{ if (length > w) w = length } END { print w }')
+  total=0
+  while IFS=$'\t' read -r project minutes; do
+    n=$(( max > 0 ? (minutes * 14 + max / 2) / max : 0 ))
+    printf ' %-*s  %s  %s\n' "$width" "$project" "$(bar "$n")" "$(duration "$minutes")"
+    total=$((total + minutes))
+  done <<<"$rows"
+
+  n=$(streak)
+  echo
+  if spanish; then
+    printf ' %s: %s bloques · %s · racha %s %s\n' "$label" "$blocks" "$(duration "$total")" "$n" "$( ((n == 1)) && echo día || echo días)"
+  else
+    printf ' %s: %s blocks · %s · streak %s %s\n' "$label" "$blocks" "$(duration "$total")" "$n" "$( ((n == 1)) && echo day || echo days)"
+  fi
+}
+
+case "${1:-}" in
+start) control start "${2:-}" ;;
+pause | resume | toggle | skip | stop | status | panel) control "$1" ;;
+project) project ;;
+stats) stats "${2:-}" ;;
+-h | --help | "")
+  sed -n '3,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  ;;
+*)
+  echo "Unknown command: $1" >&2
+  exit 1
+  ;;
+esac
