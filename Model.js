@@ -262,6 +262,136 @@ function rehydrate(saved, now, settings) {
   return { state: st, effects: effects }
 }
 
+// --- History and statistics ---------------------------------------------------
+//
+// history.jsonl holds one block per line. Days are local calendar days, stepped
+// with Date arithmetic (never 24 h) so daylight saving changes cannot break a
+// streak.
+
+function parseHistory(text) {
+  var out = []
+  var lines = String(text || "").split("\n")
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].trim()
+    if (!line) continue
+    var e
+    try { e = JSON.parse(line) } catch (err) { continue }
+    if (!e || typeof e !== "object" || e instanceof Array) continue
+    if (typeof e.start !== "number" || typeof e.end !== "number" || typeof e.kind !== "string") continue
+    if (typeof e.ms !== "number") e.ms = Math.max(0, e.end - e.start)
+    if (typeof e.project !== "string") e.project = ""
+    out.push(e)
+  }
+  return out
+}
+
+function pad(n) { return (n < 10 ? "0" : "") + n }
+
+function dayKey(ms) {
+  var d = new Date(ms)
+  return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
+}
+
+function dayStart(ms, offsetDays) {
+  var d = new Date(ms)
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + (offsetDays || 0)).getTime()
+}
+
+// Monday = 0 … Sunday = 6
+function weekday(ms) { return (new Date(ms).getDay() + 6) % 7 }
+
+function isCompletedFocus(e) { return e.kind === "focus" && e.completed === true }
+
+function minutesOf(e) { return Math.round(e.ms / MINUTE) }
+
+function blocksPerDay(entries) {
+  var days = {}
+  for (var i = 0; i < entries.length; i++) {
+    if (!isCompletedFocus(entries[i])) continue
+    var k = dayKey(entries[i].start)
+    days[k] = (days[k] || 0) + 1
+  }
+  return days
+}
+
+function stats(entries, now) {
+  var today = dayKey(now)
+  var weekStart = dayStart(now, -weekday(now))
+  var s = { today: { blocks: 0, minutes: 0 }, week: { blocks: 0, minutes: 0 }, streak: 0 }
+  for (var i = 0; i < entries.length; i++) {
+    var e = entries[i]
+    if (!isCompletedFocus(e)) continue
+    if (dayKey(e.start) === today) { s.today.blocks++; s.today.minutes += minutesOf(e) }
+    if (e.start >= weekStart && e.start <= now) { s.week.blocks++; s.week.minutes += minutesOf(e) }
+  }
+  var days = blocksPerDay(entries)
+  var offset = days[today] ? 0 : -1
+  while (days[dayKey(dayStart(now, offset))]) { s.streak++; offset-- }
+  return s
+}
+
+function byProject(entries, now, days) {
+  var since = dayStart(now, -(days - 1))
+  var totals = {}
+  for (var i = 0; i < entries.length; i++) {
+    var e = entries[i]
+    if (e.kind !== "focus" || !e.project || e.start < since || e.start > now) continue
+    totals[e.project] = (totals[e.project] || 0) + e.ms
+  }
+  var out = []
+  for (var p in totals) out.push({ project: p, minutes: Math.round(totals[p] / MINUTE) })
+  out.sort(function(a, b) { return b.minutes - a.minutes || (a.project < b.project ? -1 : 1) })
+  return out
+}
+
+function recentProjects(entries, now, limit) {
+  var since = dayStart(now, -29)
+  var counts = {}
+  for (var i = 0; i < entries.length; i++) {
+    var e = entries[i]
+    if (e.kind !== "focus" || !e.project || e.start < since) continue
+    counts[e.project] = (counts[e.project] || 0) + 1
+  }
+  var names = Object.keys(counts)
+  names.sort(function(a, b) { return counts[b] - counts[a] || (a < b ? -1 : 1) })
+  return names.slice(0, limit)
+}
+
+function level(blocks) {
+  if (!blocks) return 0
+  if (blocks === 1) return 1
+  if (blocks <= 3) return 2
+  if (blocks <= 5) return 3
+  return 4
+}
+
+// weeks * 7 cells, column by column (one column per week, Monday on top).
+// The last column is the current week; its days after today are -1.
+function heatmap(entries, now, weeks) {
+  var days = blocksPerDay(entries)
+  var firstMonday = dayStart(now, -weekday(now) - (weeks - 1) * 7)
+  var today = dayKey(now)
+  var cells = []
+  var past = true
+  for (var i = 0; i < weeks * 7; i++) {
+    var key = dayKey(dayStart(firstMonday, i))
+    cells.push(past ? level(days[key]) : -1)
+    if (key === today) past = false
+  }
+  return cells
+}
+
+function clock(ms) {
+  var total = Math.max(0, Math.ceil(ms / 1000))
+  return pad(Math.floor(total / 60)) + ":" + pad(total % 60)
+}
+
+function duration(minutes) {
+  var m = Math.max(0, Math.round(minutes))
+  if (m < 60) return m + "m"
+  return Math.floor(m / 60) + "h " + pad(m % 60) + "m"
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     PLUGIN_ID: PLUGIN_ID,
@@ -274,6 +404,14 @@ if (typeof module !== "undefined") {
     initialState: initialState,
     next: next,
     remainingMs: remainingMs,
-    rehydrate: rehydrate
+    rehydrate: rehydrate,
+    parseHistory: parseHistory,
+    dayKey: dayKey,
+    stats: stats,
+    byProject: byProject,
+    recentProjects: recentProjects,
+    heatmap: heatmap,
+    clock: clock,
+    duration: duration
   }
 }

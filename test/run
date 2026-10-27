@@ -42,7 +42,8 @@ fi
 # --- Model.js ----------------------------------------------------------------
 
 if command -v node >/dev/null; then
-  node "$ROOT/test/model.test.js" || failures=$((failures + 1))
+  # Chile: daylight saving changes happen on dates the tests pin.
+  TZ=America/Santiago node "$ROOT/test/model.test.js" || failures=$((failures + 1))
 fi
 
 echo

@@ -19,7 +19,95 @@ const DEFAULTS = {
 const MIN = 60000
 const types = effects => effects.map(e => e.type === "island" ? "island:" + e.face : e.type)
 
+// Local-time helpers: the runner sets TZ, so these follow its clock changes.
+const at = (y, mo, d, h, mi) => new Date(y, mo - 1, d, h || 0, mi || 0).getTime()
+const focus = (start, project, completed) => ({
+  start, end: start + 25 * MIN, kind: "focus", project: project || "api",
+  completed: completed !== false, ms: 25 * MIN, blocked: 0
+})
+
 const cases = {
+
+  "history skips broken lines": () => {
+    const text = [
+      JSON.stringify({ start: 1, end: 2, kind: "focus", project: "a", completed: true, ms: 1 }),
+      "{oops",
+      "",
+      JSON.stringify({ start: "x", end: 2, kind: "focus" }),
+      JSON.stringify([1, 2]),
+      JSON.stringify({ start: 3, end: 4, kind: "short", project: "a", completed: true, ms: 1 })
+    ].join("\n")
+    const entries = Model.parseHistory(text)
+    assert.strictEqual(entries.length, 2)
+    assert.strictEqual(entries[1].kind, "short")
+    assert.deepStrictEqual(Model.parseHistory(""), [])
+  },
+  "today and week count completed focus only": () => {
+    const now = at(2026, 10, 28, 18) // Wednesday
+    const entries = [
+      focus(at(2026, 10, 28, 9), "api"),
+      focus(at(2026, 10, 28, 10), "api", false),
+      { start: at(2026, 10, 28, 11), end: at(2026, 10, 28, 11, 5), kind: "short", project: "api", completed: true, ms: 5 * MIN },
+      focus(at(2026, 10, 26, 9), "web"),     // Monday, same week
+      focus(at(2026, 10, 25, 9), "web")      // Sunday, last week
+    ]
+    const s = Model.stats(entries, now)
+    assert.deepStrictEqual(s.today, { blocks: 1, minutes: 25 })
+    assert.deepStrictEqual(s.week, { blocks: 2, minutes: 50 })
+  },
+  "streak counts consecutive days and survives an empty today": () => {
+    const now = at(2026, 10, 28, 8)
+    const entries = [focus(at(2026, 10, 27, 9)), focus(at(2026, 10, 26, 9)), focus(at(2026, 10, 24, 9))]
+    assert.strictEqual(Model.stats(entries, now).streak, 2)
+    assert.strictEqual(Model.stats(entries.concat([focus(at(2026, 10, 28, 7))]), now).streak, 3)
+    assert.strictEqual(Model.stats([focus(at(2026, 10, 20, 9))], now).streak, 0)
+    assert.strictEqual(Model.stats([], now).streak, 0)
+  },
+  "a block at 23:50 belongs to that day": () => {
+    const e = focus(at(2026, 10, 27, 23, 50))
+    assert.strictEqual(Model.dayKey(e.start), "2026-10-27")
+    assert.strictEqual(Model.stats([e], at(2026, 10, 27, 23, 59)).today.blocks, 1)
+    assert.strictEqual(Model.stats([e], at(2026, 10, 28, 0, 30)).today.blocks, 0)
+  },
+  "streak survives a daylight saving change": () => {
+    // Chile moves its clocks forward on Sunday 2026-09-06: that day has 23 hours.
+    const entries = [focus(at(2026, 9, 5, 23)), focus(at(2026, 9, 6, 23)), focus(at(2026, 9, 7, 0, 30))]
+    assert.strictEqual(Model.stats(entries, at(2026, 9, 7, 12)).streak, 3)
+    assert.strictEqual(Model.dayKey(at(2026, 9, 6, 23, 59)), "2026-09-06")
+  },
+  "time per project sorted": () => {
+    const now = at(2026, 10, 28, 18)
+    const entries = [
+      focus(at(2026, 10, 28, 9), "api"), focus(at(2026, 10, 27, 9), "api"),
+      focus(at(2026, 10, 27, 10), "web"), Object.assign(focus(at(2026, 10, 27, 11), "web", false), { ms: 10 * MIN }),
+      focus(at(2026, 10, 10, 9), "old")
+    ]
+    assert.deepStrictEqual(Model.byProject(entries, now, 7), [
+      { project: "api", minutes: 50 }, { project: "web", minutes: 35 }
+    ])
+    assert.deepStrictEqual(Model.recentProjects(entries, now, 4), ["api", "web", "old"])
+    assert.deepStrictEqual(Model.recentProjects(entries, now, 1), ["api"])
+  },
+  "heatmap has 140 cells ending this week": () => {
+    const now = at(2026, 10, 28, 18) // Wednesday
+    const entries = [focus(at(2026, 10, 28, 9)), focus(at(2026, 10, 28, 10)), focus(at(2026, 10, 26, 9))]
+    for (let i = 0; i < 6; i++) entries.push(focus(at(2026, 10, 27, 8 + i)))
+    const cells = Model.heatmap(entries, now, 20)
+    assert.strictEqual(cells.length, 140)
+    const monday = 19 * 7
+    assert.deepStrictEqual(cells.slice(monday, monday + 7), [1, 4, 2, -1, -1, -1, -1])
+    assert.strictEqual(cells[0], 0)
+  },
+  "clock and duration format": () => {
+    assert.strictEqual(Model.clock(25 * MIN), "25:00")
+    assert.strictEqual(Model.clock(25 * MIN - 200), "25:00")
+    assert.strictEqual(Model.clock(61000), "01:01")
+    assert.strictEqual(Model.clock(0), "00:00")
+    assert.strictEqual(Model.clock(-5), "00:00")
+    assert.strictEqual(Model.duration(125), "2h 05m")
+    assert.strictEqual(Model.duration(45), "45m")
+    assert.strictEqual(Model.duration(0), "0m")
+  },
 
   "start begins a focus block": () => {
     const S = Model.cleanSettings({})
