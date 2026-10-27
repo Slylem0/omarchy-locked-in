@@ -392,6 +392,43 @@ function duration(minutes) {
   return Math.floor(m / 60) + "h " + pad(m % 60) + "m"
 }
 
+// --- Distractions and missed notifications ------------------------------------
+
+function parseBlocklist(text) {
+  var out = []
+  var parts = String(text || "").split(",")
+  for (var i = 0; i < parts.length; i++) {
+    var term = parts[i].trim().toLowerCase()
+    // One letter would match nearly every title.
+    if (term.length > 1 && out.indexOf(term) < 0) out.push(term)
+  }
+  return out
+}
+
+// The term that flags a window, matched against its class or its title (so
+// YouTube counts inside any browser), or "" when the window is fine.
+function blockedBy(list, windowClass, title) {
+  var cls = String(windowClass || "").toLowerCase()
+  var ttl = String(title || "").toLowerCase()
+  for (var i = 0; i < list.length; i++) {
+    if ((cls && cls.indexOf(list[i]) >= 0) || (ttl && ttl.indexOf(list[i]) >= 0)) return list[i]
+  }
+  return ""
+}
+
+// Omarchy keeps every notification, silenced ones included, as
+// <epoch-ms>-<id>.json in its history folder.
+function missedNotifications(fileNames, start, end) {
+  var count = 0
+  for (var i = 0; i < fileNames.length; i++) {
+    var m = /^(\d+)-\d+\.json$/.exec(fileNames[i])
+    if (!m) continue
+    var ms = Number(m[1])
+    if (ms >= start && ms < end) count++
+  }
+  return count
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     PLUGIN_ID: PLUGIN_ID,
@@ -412,6 +449,9 @@ if (typeof module !== "undefined") {
     recentProjects: recentProjects,
     heatmap: heatmap,
     clock: clock,
-    duration: duration
+    duration: duration,
+    parseBlocklist: parseBlocklist,
+    blockedBy: blockedBy,
+    missedNotifications: missedNotifications
   }
 }

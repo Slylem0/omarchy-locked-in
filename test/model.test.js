@@ -28,6 +28,31 @@ const focus = (start, project, completed) => ({
 
 const cases = {
 
+  "blocklist ignores empty and one-letter terms": () => {
+    assert.deepStrictEqual(Model.parseBlocklist(" , ,"), [])
+    assert.deepStrictEqual(Model.parseBlocklist("YouTube, x, ,Discord "), ["youtube", "discord"])
+    assert.deepStrictEqual(Model.parseBlocklist(null), [])
+    assert.strictEqual(Model.blockedBy(Model.parseBlocklist("x"), "xterm", "x"), "")
+  },
+  "matches YouTube in a browser title": () => {
+    assert.strictEqual(Model.blockedBy(["youtube"], "chromium", "Lo-fi - YouTube — Chromium"), "youtube")
+    assert.strictEqual(Model.blockedBy(["discord"], "discord", ""), "discord")
+    assert.strictEqual(Model.blockedBy(["steam"], "steam_app_123", "Hades"), "steam")
+    assert.strictEqual(Model.blockedBy(["x.com"], "firefox", "Home / X — x.com"), "x.com")
+  },
+  "does not match unrelated windows": () => {
+    const list = Model.parseBlocklist(Model.DEFAULTS.blocklist)
+    assert.strictEqual(Model.blockedBy(list, "kitty", "nvim Model.js"), "")
+    assert.strictEqual(Model.blockedBy(list, "org.gnome.Nautilus", "Projects"), "")
+    assert.strictEqual(Model.blockedBy(list, "", ""), "")
+    assert.strictEqual(Model.blockedBy([], "discord", "Discord"), "")
+  },
+  "counts notifications inside the block": () => {
+    const names = ["1000-1.json", "1500-2.json", "2000-3.json", "2500-4.json", "notes.txt", "abc-5.json", "1999-6-appIcon"]
+    assert.strictEqual(Model.missedNotifications(names, 1500, 2500), 2)
+    assert.strictEqual(Model.missedNotifications([], 0, 10), 0)
+  },
+
   "history skips broken lines": () => {
     const text = [
       JSON.stringify({ start: 1, end: 2, kind: "focus", project: "a", completed: true, ms: 1 }),
