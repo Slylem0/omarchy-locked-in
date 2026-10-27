@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Hyprland
 import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
@@ -39,6 +40,26 @@ BarWidget {
   function toggle() { if (panelLoader.item) panelLoader.item.toggle() }
   function closeForPopoutSwitch() { if (panelLoader.item) panelLoader.item.closeForPopoutSwitch() }
 
+  // There is one widget per screen; open the dashboard on the focused one.
+  function toggleOnFocusedScreen() {
+    var items = root.bar && typeof root.bar.moduleWidgets === "function" ? root.bar.moduleWidgets(root.moduleName) : [root]
+    var name = Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : ""
+    for (var i = 0; i < items.length; i++) {
+      var win = items[i] && items[i].QsWindow ? items[i].QsWindow.window : null
+      if (win && win.screen && win.screen.name === name && typeof items[i].toggle === "function") {
+        items[i].toggle()
+        return
+      }
+    }
+    root.toggle()
+  }
+
+  IpcHandler {
+    target: Model.PLUGIN_ID + ".panel"
+    function toggle(): string { root.toggleOnFocusedScreen(); return "ok" }
+    function open(): string { root.toggleOnFocusedScreen(); return "ok" }
+  }
+
   function send(command) {
     Quickshell.execDetached(["omarchy-shell", Model.PLUGIN_ID, command])
   }
@@ -74,7 +95,7 @@ BarWidget {
 
   Loader {
     id: panelLoader
-    active: false // turned on with Panel.qml
+    active: true
     source: Qt.resolvedUrl("Panel.qml")
     visible: false
     onLoaded: {

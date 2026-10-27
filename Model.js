@@ -46,7 +46,20 @@ var STRINGS = {
     breakLong: "Long break",
     nextBlock: "Next: block %1 of %2",
     breakTip: "Stand up, drink some water, look far away.",
-    skipBreak: "Skip break"
+    skipBreak: "Skip break",
+    ready: "Ready",
+    focusMode: "Focus %1",
+    breakMode: "Break %1",
+    longMode: "Long %1",
+    endsAt: "ends %1",
+    weeks: "20 weeks",
+    blocksCount: "%1 blocks",
+    detected: "detected",
+    projectHint: "What are you working on?",
+    thisWeek: "this week · %1 blocks",
+    noSilence: "Notifications are not being silenced",
+    firstBlock: "Your first block will show up here.",
+    stop: "Stop"
   },
   es: {
     start: "Empezar",
@@ -75,7 +88,20 @@ var STRINGS = {
     breakLong: "Pausa larga",
     nextBlock: "Después: bloque %1 de %2",
     breakTip: "Párate, toma agua, mira lejos.",
-    skipBreak: "Saltar pausa"
+    skipBreak: "Saltar pausa",
+    ready: "Lista",
+    focusMode: "Foco %1",
+    breakMode: "Pausa %1",
+    longMode: "Larga %1",
+    endsAt: "termina %1",
+    weeks: "20 semanas",
+    blocksCount: "%1 bloques",
+    detected: "detectado",
+    projectHint: "¿En qué estás trabajando?",
+    thisWeek: "esta semana · %1 bloques",
+    noSilence: "Las notificaciones no se están silenciando",
+    firstBlock: "Tu primer bloque aparecerá aquí.",
+    stop: "Detener"
   }
 }
 

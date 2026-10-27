@@ -38,6 +38,7 @@ Item {
   property int silenced: 0
   property var missed: []
   property bool dndAvailable: true
+  onDndAvailableChanged: root.save()
   property var shield: null
   property string islandFace: "idle"
   property var hidden: []
@@ -45,8 +46,6 @@ Item {
   property bool loaded: false
   property string pendingProject: ""
   property var pendingRecords: []
-
-  signal panelRequested()
 
   // --- controls ---------------------------------------------------------------
 
@@ -156,7 +155,7 @@ Item {
 
   function save() {
     if (!root.loaded) return
-    stateFile.setText(JSON.stringify({ session: root.session, hidden: root.hidden }) + "\n")
+    stateFile.setText(JSON.stringify({ session: root.session, hidden: root.hidden, dndAvailable: root.dndAvailable }) + "\n")
   }
 
   // --- distraction shield -------------------------------------------------------
@@ -397,7 +396,8 @@ Item {
     function toggle(): string { root.toggle(); return "ok" }
     function skip(): string { root.skip(); return "ok" }
     function stop(): string { root.stop(); return "ok" }
-    function panel(): string { root.panelRequested(); return "ok" }
+    // The dashboard belongs to the bar widget, which registers its own target.
+    function panel(): string { Quickshell.execDetached(["omarchy-shell", Model.PLUGIN_ID + ".panel", "toggle"]); return "ok" }
     // Show a face of the island, e.g. bind a key to "island pause".
     function island(face: string): string {
       if (face === "pause" || face === "pause-min") { if (!root.inBreak) return "none"; root.islandFace = face; return "ok" }
