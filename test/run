@@ -105,6 +105,19 @@ export STUB_WINDOW='{"class":"brave-browser","title":"Inbox","pid":100}'
 printf '%s\n' '{"start":1,"end":2,"kind":"focus","project":"dotfiles","completed":true,"ms":1}' >"$XDG_STATE_HOME/locked-in/history.jsonl"
 check "sandboxed browser processes are ignored" "dotfiles" "$("$CLI" project)"
 
+NOTES="$XDG_STATE_HOME/omarchy/notifications/history"
+mkdir -p "$NOTES"
+printf '%s' '{"app":"discord","summary":"one quick game?"}' >"$NOTES/1000-1.json"
+printf '%s' '{"app":"Slack","summary":"#general"}' >"$NOTES/2000-2.json"
+printf '%s' '{"app":"kitty","summary":"build done"}' >"$NOTES/3000-3.json"
+printf '%s' '{"app":"omarchy","summary":"update"}' >"$NOTES/4000-4.json"
+printf '%s' '{"app":"late","summary":"after"}' >"$NOTES/9000-5.json"
+printf 'x' >"$NOTES/2500-6-appIcon"
+check "missed lists the newest notifications inside the block" \
+  '{"count":4,"items":[{"app":"omarchy","summary":"update"},{"app":"kitty","summary":"build done"},{"app":"Slack","summary":"#general"}]}' \
+  "$("$CLI" missed 1000 5000)"
+check "missed without history is empty" '{"count":0,"items":[]}' "$(XDG_STATE_HOME="$SANDBOX/none" "$CLI" missed 1 2)"
+
 reset_proc
 export STUB_WINDOW='{}'
 check "no project prints nothing" "" "$("$CLI" project)"

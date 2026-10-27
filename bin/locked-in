@@ -14,6 +14,7 @@
 #   locked-in panel                  open the dashboard
 #   locked-in project                the project in the focused window
 #   locked-in stats [--week|--month] focus time per project
+#   locked-in missed START END       notifications that arrived in a block
 #
 # LOCKED_IN_LANG=es|en forces the language of the text output.
 
@@ -112,6 +113,32 @@ control() {
   echo "$reply"
 }
 
+# --- missed notifications -------------------------------------------------------
+
+# Omarchy keeps every notification, silenced ones too, as <epoch-ms>-<id>.json.
+# Prints {"count": N, "items": [{app, summary}, ...]} for those between START
+# and END, the three newest first.
+missed() {
+  local start=${1:-0} end=${2:-0} dir name ms files=()
+  dir="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/notifications/history"
+  if [[ -d $dir ]]; then
+    for name in "$dir"/*.json; do
+      [[ -f $name ]] || continue
+      name=$(basename -- "$name")
+      [[ $name =~ ^([0-9]+)-[0-9]+\.json$ ]] || continue
+      ms=${BASH_REMATCH[1]}
+      ((ms >= start && ms < end)) && files+=("$ms $dir/$name")
+    done
+  fi
+  if ((${#files[@]} == 0)); then
+    echo '{"count":0,"items":[]}'
+    return
+  fi
+  printf '%s\n' "${files[@]}" | sort -rn | head -n3 | cut -d' ' -f2- |
+    xargs -d '\n' jq -c '{app: (.app // ""), summary: (.summary // "")}' 2>/dev/null |
+    jq -sc --argjson count "${#files[@]}" '{count: $count, items: .}'
+}
+
 # --- stats ----------------------------------------------------------------------
 
 bar() {
@@ -180,9 +207,10 @@ case "${1:-}" in
 start) control start "${2:-}" ;;
 pause | resume | toggle | skip | stop | status | panel) control "$1" ;;
 project) project ;;
+missed) missed "${2:-0}" "${3:-0}" ;;
 stats) stats "${2:-}" ;;
 -h | --help | "")
-  sed -n '3,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '3,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   ;;
 *)
   echo "Unknown command: $1" >&2
