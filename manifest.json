@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "slylem0.locked-in",
   "name": "Locked In",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "author": "Pablo Nicolás Marín",
   "license": "MIT",
   "description": "Focus blocks in your Omarchy bar: a Pomodoro timer that mutes notifications, shields you from distracting apps and tracks time per project.",
