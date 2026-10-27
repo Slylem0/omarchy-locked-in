@@ -47,6 +47,7 @@ Item {
   property string pendingProject: ""
   property bool detectBeforeStart: false
   property var pendingRecords: []
+  property var pendingLines: []
 
   // --- controls ---------------------------------------------------------------
 
@@ -166,9 +167,19 @@ Item {
     missedProc.running = true
   }
 
+  // Lines go to the helper on stdin, one write at a time, so they stay out of
+  // the process list and never interleave.
   function append(entry) {
-    Quickshell.execDetached(["sh", "-c", 'mkdir -p "$1" && printf "%s\\n" "$2" >>"$1/history.jsonl"',
-      "sh", root.stateDir, JSON.stringify(entry)])
+    root.pendingLines = root.pendingLines.concat([JSON.stringify(entry)])
+    root.flushLines()
+  }
+
+  function flushLines() {
+    if (recordProc.running || root.pendingLines.length === 0) return
+    recordProc.lines = root.pendingLines.join("\n") + "\n"
+    root.pendingLines = []
+    recordProc.stdinEnabled = true
+    recordProc.running = true
   }
 
   function save() {
@@ -404,8 +415,19 @@ Item {
 
   Process {
     id: mkdirProc
-    command: ["mkdir", "-p", root.stateDir]
+    command: [root.helper, "init"]
     onExited: stateFile.reload()
+  }
+
+  Process {
+    id: recordProc
+    property string lines: ""
+    command: [root.helper, "record"]
+    onStarted: {
+      write(lines)
+      stdinEnabled = false
+    }
+    onExited: root.flushLines()
   }
 
   Island { service: root }

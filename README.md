@@ -119,7 +119,8 @@ $ locked-in stats
 ```
 
 Your history is a plain JSON-lines file in
-`~/.local/state/locked-in/history.jsonl`, one block per line.
+`~/.local/state/locked-in/history.jsonl`, one block per line. The folder and
+its files are readable only by you.
 
 ## Requirements
 

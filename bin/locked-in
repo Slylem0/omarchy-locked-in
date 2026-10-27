@@ -16,6 +16,8 @@
 #   locked-in project                the project in the focused window
 #   locked-in stats [--week|--month] focus time per project
 #   locked-in missed START END       notifications that arrived in a block
+#   locked-in init                   create the state folder, private to you
+#   locked-in record                 append the JSON lines on stdin to the history
 #
 # LOCKED_IN_LANG=es|en forces the language of the text output.
 
@@ -116,6 +118,21 @@ control() {
 
 # --- missed notifications -------------------------------------------------------
 
+# The history says what you worked on and when, so the folder and its files are
+# readable only by you, whatever the umask. Records come in on stdin rather than
+# as arguments, which other users could see in the process list.
+init() {
+  umask 077
+  mkdir -p "$STATE_DIR" && chmod 700 "$STATE_DIR" || exit 1
+  chmod 600 "$STATE_DIR"/*.json "$STATE_DIR"/*.jsonl 2>/dev/null
+  return 0
+}
+
+record() {
+  init
+  cat >>"$HISTORY"
+}
+
 # Omarchy keeps every notification, silenced ones too, as <epoch-ms>-<id>.json.
 # Prints {"count": N, "items": [{app, summary}, ...]} for those between START
 # and END, the three newest first.
@@ -211,8 +228,10 @@ pause | resume | toggle | skip | stop | status | panel) control "$1" ;;
 project) project ;;
 missed) missed "${2:-0}" "${3:-0}" ;;
 stats) stats "${2:-}" ;;
+init) init ;;
+record) record ;;
 -h | --help | "")
-  sed -n '3,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '3,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   ;;
 *)
   echo "Unknown command: $1" >&2

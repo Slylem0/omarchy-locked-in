@@ -146,6 +146,18 @@ grep -q "api .*██████████████ *1h 15m" <<<"$out" && 
   grep -q "4 blocks" <<<"$out" && grep -q "streak 1 day" <<<"$out" &&
   ok "stats prints bars per project" || fail "stats prints bars per project" "$out"
 
+PRIV="$SANDBOX/private"
+line='{"start":1,"end":2,"kind":"focus","project":"secret","completed":true,"ms":1}'
+(umask 022 && XDG_STATE_HOME="$PRIV" "$CLI" record <<<"$line")
+check "record appends the line from stdin" "$line" "$(cat "$PRIV/locked-in/history.jsonl")"
+check "record keeps the history private under umask 022" "700 600" \
+  "$(stat -c %a "$PRIV/locked-in") $(stat -c %a "$PRIV/locked-in/history.jsonl")"
+mkdir -p "$PRIV/old" && chmod 755 "$PRIV/old" && touch "$PRIV/old/state.json" && chmod 644 "$PRIV/old/state.json"
+mv "$PRIV/old" "$PRIV/locked-in-old" && rm -rf "$PRIV/locked-in" && mv "$PRIV/locked-in-old" "$PRIV/locked-in"
+XDG_STATE_HOME="$PRIV" "$CLI" init
+check "init tightens an existing folder" "700 600" \
+  "$(stat -c %a "$PRIV/locked-in") $(stat -c %a "$PRIV/locked-in/state.json")"
+
 # --- manifest ----------------------------------------------------------------
 
 if command -v omarchy-plugin-validate >/dev/null; then
