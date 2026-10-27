@@ -1,0 +1,53 @@
+#!/bin/bash
+# Stub bodies are single-quoted on purpose: they expand when the stub runs.
+# shellcheck disable=SC2016,SC2015
+
+# Runs bin/locked-in against stubbed omarchy-shell, hyprctl and a fake /proc,
+# so nothing touches the real shell, notifications or Hyprland. Then validates
+# the manifest and runs the Model.js tests under node.
+
+set -uo pipefail
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+failures=0
+
+SANDBOX=$(mktemp -d)
+trap 'rm -rf "$SANDBOX"' EXIT
+
+STUBS="$SANDBOX/stubs"
+LOG="$SANDBOX/log"
+mkdir -p "$STUBS"
+: >"$LOG"
+
+ok() { echo "ok   $1"; }
+fail() {
+  echo "FAIL $1"
+  [[ -n ${2:-} ]] && sed 's/^/     /' <<<"$2"
+  failures=$((failures + 1))
+}
+
+stub() {
+  printf '#!/bin/bash\n%s\n' "$2" >"$STUBS/$1"
+  chmod +x "$STUBS/$1"
+}
+
+# --- manifest ----------------------------------------------------------------
+
+if command -v omarchy-plugin-validate >/dev/null; then
+  if out=$(omarchy-plugin-validate "$ROOT" 2>&1); then ok "manifest validates"; else
+    fail "manifest validates" "$out"
+  fi
+fi
+
+# --- Model.js ----------------------------------------------------------------
+
+if command -v node >/dev/null; then
+  node "$ROOT/test/model.test.js" || failures=$((failures + 1))
+fi
+
+echo
+if ((failures)); then
+  echo "$failures failure(s)"
+  exit 1
+fi
+echo "all passed"
