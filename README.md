@@ -76,6 +76,10 @@ o.bind("SUPER + ALT + SHIFT + P", "Locked In dashboard", "omarchy-shell slylem0.
 In the dashboard: Space starts or pauses, `s` skips, `r` stops, `p` edits the
 project, Esc closes. Esc also folds the island.
 
+Scroll over the dashboard's ring to change time, 5 minutes per notch. With a
+block running it stretches or shortens that block (never below a minute);
+otherwise it sets how long your blocks are.
+
 ## Command line
 
 `bin/locked-in` drives the timer and reads your history:
@@ -84,6 +88,7 @@ project, Esc closes. Esc also folds the island.
 locked-in start [project]        start a focus block
 locked-in pause|resume|toggle    pause or resume the current phase
 locked-in skip|stop              skip to the next phase, or stop
+locked-in adjust MINUTES         lengthen (+) or shorten (-) the current phase
 locked-in status                 current state as JSON
 locked-in panel                  open the dashboard
 locked-in project                the project in the focused window
@@ -139,7 +144,9 @@ sabe en qué proyecto estás sin preguntarte.
    que llegaron mientras estabas en foco. Empieza la pausa; puedes minimizarla
    a una isla delgada.
 5. **El panel** guarda veinte semanas de foco como mapa de calor y el tiempo por
-   proyecto de la semana.
+   proyecto de la semana. Con la rueda del mouse sobre el reloj cambias el
+   tiempo de 5 en 5 minutos: alarga o acorta el bloque en curso, o fija la
+   duración de tus bloques si no hay ninguno corriendo.
 
 Instálalo con los comandos de *Install* y elige el idioma en los ajustes del
 widget (`language: es`). Todo sigue el tema de Omarchy y funciona con la barra

@@ -419,6 +419,7 @@ Item {
     function resume(): string { root.resume(); return "ok" }
     function toggle(): string { root.toggle(); return "ok" }
     function skip(): string { root.skip(); return "ok" }
+    function adjust(minutes: string): string { root.send({ type: "adjust", minutes: Number(minutes) }); return "ok" }
     function stop(): string { root.stop(); return "ok" }
     // The dashboard belongs to the bar widget, which registers its own target.
     function panel(): string { Quickshell.execDetached(["omarchy-shell", Model.PLUGIN_ID + ".panel", "toggle"]); return "ok" }

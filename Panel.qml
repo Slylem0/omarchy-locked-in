@@ -239,6 +239,26 @@ Panel {
             id: ringBox
             width: Style.space(128)
             height: width
+
+            // Wheel: 5 minutes per notch. With a block running it stretches or
+            // shortens that block; otherwise it sets the length of your blocks.
+            property real wheelRest: 0
+            MouseArea {
+              anchors.fill: parent
+              acceptedButtons: Qt.NoButton
+              onWheel: function(wheel) {
+                var r = Util.wheelSteps(ringBox.wheelRest, wheel.angleDelta.y)
+                ringBox.wheelRest = r.remainder
+                if (!r.steps) return
+                if (root.active) {
+                  root.send("adjust", String(r.steps * 5))
+                } else {
+                  var next = Model.cleanSettings({ focusMinutes: root.config.focusMinutes + r.steps * 5 }).focusMinutes
+                  if (next !== root.config.focusMinutes)
+                    Quickshell.execDetached(["omarchy", "bar", "set", Model.PLUGIN_ID, "focusMinutes", String(next), "--json"])
+                }
+              }
+            }
             Canvas {
               id: bigRing
               anchors.fill: parent
