@@ -25,7 +25,28 @@ var STRINGS = {
     resume: "Resume",
     skip: "Skip",
     reset: "Reset",
-    tooltip: "Locked In"
+    tooltip: "Locked In",
+    block: "Block %1",
+    blockOf: "Block %1 of %2",
+    onYourList: "%1 is on your list",
+    closedIt: "Closed %1",
+    closedNote: "It was on your list",
+    left: "left",
+    toFinish: "to finish the block",
+    keepGoing: "Keep going",
+    hide: "Hide",
+    close: "Close",
+    blockDone: "Block %1 done",
+    blocksToday: "%1 blocks today",
+    streak: "%1-day streak",
+    heldFor: "%1 notifications arrived while you were focused",
+    breakFor: "Break %1",
+    anotherBlock: "Another block",
+    breakShort: "Break",
+    breakLong: "Long break",
+    nextBlock: "Next: block %1 of %2",
+    breakTip: "Stand up, drink some water, look far away.",
+    skipBreak: "Skip break"
   },
   es: {
     start: "Empezar",
@@ -33,7 +54,28 @@ var STRINGS = {
     resume: "Seguir",
     skip: "Saltar",
     reset: "Reiniciar",
-    tooltip: "Locked In"
+    tooltip: "Locked In",
+    block: "Bloque %1",
+    blockOf: "Bloque %1 de %2",
+    onYourList: "%1 está en tu lista",
+    closedIt: "Cerré %1",
+    closedNote: "Estaba en tu lista",
+    left: "te quedan",
+    toFinish: "para cerrar el bloque",
+    keepGoing: "Seguir igual",
+    hide: "Esconder",
+    close: "Cerrar",
+    blockDone: "Bloque %1 listo",
+    blocksToday: "%1 bloques hoy",
+    streak: "racha de %1 días",
+    heldFor: "%1 avisos llegaron mientras estabas en foco",
+    breakFor: "Pausa %1",
+    anotherBlock: "Otro bloque",
+    breakShort: "Pausa",
+    breakLong: "Pausa larga",
+    nextBlock: "Después: bloque %1 de %2",
+    breakTip: "Párate, toma agua, mira lejos.",
+    skipBreak: "Saltar pausa"
   }
 }
 
@@ -163,7 +205,8 @@ function afterFocus(state, end, completed, settings, effects) {
   var st = copy(state)
   if (completed) st.cycle = state.cycle + 1
   var kind = completed && st.cycle % settings.longBreakEvery === 0 ? "long" : "short"
-  effects.push({ type: "island", face: "done" })
+  // A finished block gets its moment; a skipped one goes straight to the break.
+  effects.push({ type: "island", face: completed ? "done" : "pause" })
   return enter(st, kind, end, settings.autoStartBreaks, settings)
 }
 

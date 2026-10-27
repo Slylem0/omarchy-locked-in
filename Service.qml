@@ -129,6 +129,7 @@ Item {
       root.islandFace = effect.face
       if (effect.face === "start") startFaceTimer.restart()
       if (effect.face === "done") doneFaceTimer.restart()
+      if (effect.face === "pause" && !root.inBreak) root.islandFace = "idle"
       break
     }
   }
@@ -384,6 +385,8 @@ Item {
     onExited: stateFile.reload()
   }
 
+  Island { service: root }
+
   // --- IPC --------------------------------------------------------------------
 
   IpcHandler {
@@ -395,6 +398,12 @@ Item {
     function skip(): string { root.skip(); return "ok" }
     function stop(): string { root.stop(); return "ok" }
     function panel(): string { root.panelRequested(); return "ok" }
+    // Show a face of the island, e.g. bind a key to "island pause".
+    function island(face: string): string {
+      if (face === "pause" || face === "pause-min") { if (!root.inBreak) return "none"; root.islandFace = face; return "ok" }
+      if (face === "idle") { root.dismissIsland(); return "ok" }
+      return "unknown"
+    }
     function status(): string {
       return JSON.stringify({
         phase: root.session.phase, running: root.session.running,

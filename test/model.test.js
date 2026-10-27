@@ -218,6 +218,8 @@ const cases = {
     assert.strictEqual(r.effects[0].entry.completed, false)
     assert.strictEqual(r.state.phase, "short")
     assert.strictEqual(r.state.cycle, 0)
+    // Nothing to celebrate: the island opens straight on the break.
+    assert.deepStrictEqual(types(r.effects), ["record", "silence-off", "release-hidden", "island:pause"])
   },
   "blocked distractions are counted in the record": () => {
     const S = Model.cleanSettings({})
