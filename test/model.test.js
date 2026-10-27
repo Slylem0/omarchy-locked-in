@@ -28,6 +28,46 @@ const focus = (start, project, completed) => ({
 
 const cases = {
 
+  "adjust adds five minutes to a running block": () => {
+    const S = Model.cleanSettings({})
+    const st = Model.next(Model.initialState(), { type: "start", project: "api" }, 0, S).state
+    const r = Model.next(st, { type: "adjust", minutes: 5 }, 10 * MIN, S)
+    assert.strictEqual(r.state.endsAt, 30 * MIN)
+    assert.strictEqual(r.state.durationMs, 30 * MIN)
+    assert.deepStrictEqual(r.effects, [])
+    const done = Model.next(r.state, { type: "tick" }, 30 * MIN, S)
+    assert.strictEqual(done.effects[0].entry.ms, 30 * MIN)
+  },
+  "adjust never leaves less than a minute": () => {
+    const S = Model.cleanSettings({})
+    const st = Model.next(Model.initialState(), { type: "start", project: "api" }, 0, S).state
+    const r = Model.next(st, { type: "adjust", minutes: -5 }, 22 * MIN, S)
+    assert.strictEqual(Model.remainingMs(r.state, 22 * MIN), MIN)
+    assert.strictEqual(r.state.durationMs, 23 * MIN)
+  },
+  "adjust works while paused": () => {
+    const S = Model.cleanSettings({})
+    let st = Model.next(Model.initialState(), { type: "start", project: "api" }, 0, S).state
+    st = Model.next(st, { type: "pause" }, 10 * MIN, S).state
+    st = Model.next(st, { type: "adjust", minutes: -5 }, 12 * MIN, S).state
+    assert.strictEqual(st.running, false)
+    assert.strictEqual(Model.remainingMs(st, 50 * MIN), 10 * MIN)
+  },
+  "adjust stops at the phase maximum": () => {
+    const S = Model.cleanSettings({})
+    const st = Model.next(Model.initialState(), { type: "start", project: "api" }, 0, S).state
+    const r = Model.next(st, { type: "adjust", minutes: 500 }, 0, S)
+    assert.strictEqual(r.state.durationMs, 120 * MIN)
+    assert.strictEqual(r.state.endsAt, 120 * MIN)
+    const brk = Object.assign(Model.initialState(), { phase: "short", running: true, startedAt: 0, endsAt: 5 * MIN, durationMs: 5 * MIN })
+    assert.strictEqual(Model.next(brk, { type: "adjust", minutes: 60 }, 0, S).state.durationMs, 30 * MIN)
+  },
+  "adjust does nothing when idle": () => {
+    const S = Model.cleanSettings({})
+    const idle = Model.initialState()
+    assert.strictEqual(Model.next(idle, { type: "adjust", minutes: 5 }, 0, S).state, idle)
+  },
+
   "blocklist matches whole words and domains only": () => {
     const list = Model.parseBlocklist(Model.DEFAULTS.blocklist)
     assert.strictEqual(Model.blockedBy(list, "brave-browser", "Dropbox.com - Files"), "")

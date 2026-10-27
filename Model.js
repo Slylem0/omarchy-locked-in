@@ -279,6 +279,21 @@ function next(state, event, now, settings) {
     st.running = true
     st.endsAt = now + state.remainingMs
     break
+  case "adjust": {
+    // Wheel on the dashboard's ring: lengthen or shorten the current phase,
+    // keeping at least a minute left and the phase within its settings range.
+    if (state.phase === "idle") break
+    var cap = { focus: 120, short: 30, long: 60 }[state.phase] * MINUTE
+    var elapsed = state.durationMs - left
+    var target = Math.max(MINUTE, Math.min(cap - elapsed, left + Math.round(Number(event.minutes) || 0) * MINUTE))
+    var delta = target - left
+    if (!delta) break
+    st = copy(state)
+    st.durationMs = state.durationMs + delta
+    if (state.running) st.endsAt = state.endsAt + delta
+    else st.remainingMs = target
+    break
+  }
   case "blocked":
     if (state.phase !== "focus") break
     st = copy(state)

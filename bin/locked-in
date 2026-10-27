@@ -10,6 +10,7 @@
 #   locked-in start [project]        start a focus block
 #   locked-in pause|resume|toggle    pause or resume the current phase
 #   locked-in skip|stop              skip to the next phase, or stop
+#   locked-in adjust MINUTES         lengthen (+) or shorten (-) the current phase
 #   locked-in status                 current state as JSON
 #   locked-in panel                  open the dashboard
 #   locked-in project                the project in the focused window
@@ -205,12 +206,13 @@ stats() {
 
 case "${1:-}" in
 start) control start "${2:-}" ;;
+adjust) control adjust "${2:-0}" ;;
 pause | resume | toggle | skip | stop | status | panel) control "$1" ;;
 project) project ;;
 missed) missed "${2:-0}" "${3:-0}" ;;
 stats) stats "${2:-}" ;;
 -h | --help | "")
-  sed -n '3,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '3,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   ;;
 *)
   echo "Unknown command: $1" >&2

@@ -127,6 +127,10 @@ reset_proc
 check "start forwards to the shell" "shell [slylem0.locked-in] [start] [mi proyecto]" "$(cat "$LOG")"
 
 reset_proc
+"$CLI" adjust -5 >/dev/null
+check "adjust forwards minutes to the shell" "shell [slylem0.locked-in] [adjust] [-5]" "$(cat "$LOG")"
+
+reset_proc
 STUB_SHELL_REPLY="" "$CLI" pause >/dev/null 2>&1
 check "commands fail when the service is not running" "1" "$(STUB_SHELL_REPLY="" "$CLI" pause >/dev/null 2>&1; echo $?)"
 
