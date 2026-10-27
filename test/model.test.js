@@ -28,6 +28,40 @@ const focus = (start, project, completed) => ({
 
 const cases = {
 
+  "blocklist matches whole words and domains only": () => {
+    const list = Model.parseBlocklist(Model.DEFAULTS.blocklist)
+    assert.strictEqual(Model.blockedBy(list, "brave-browser", "Dropbox.com - Files"), "")
+    assert.strictEqual(Model.blockedBy(list, "firefox", "linux.com news"), "")
+    assert.strictEqual(Model.blockedBy(list, "brave-browser", "Netflix.com"), "")
+    assert.strictEqual(Model.blockedBy(list, "kitty", "~/code/discord-bot - nvim"), "")
+    assert.strictEqual(Model.blockedBy(list, "brave-browser", "Home / X — x.com"), "x.com")
+    assert.strictEqual(Model.blockedBy(list, "brave-browser", "https://x.com/home"), "x.com")
+    assert.strictEqual(Model.blockedBy(list, "discord", "Friends"), "discord")
+    assert.strictEqual(Model.blockedBy(list, "brave-browser", "Lo-fi - YouTube — Brave"), "youtube")
+  },
+  "a long gap never invents focus blocks": () => {
+    const S = Model.cleanSettings({ autoStartFocus: true })
+    const st = Model.next(Model.initialState(), { type: "start", project: "api" }, 0, S).state
+    const r = Model.rehydrate(st, 8 * 60 * MIN, S)
+    const focusRecords = r.effects.filter(e => e.type === "record" && e.entry.kind === "focus")
+    assert.strictEqual(focusRecords.length, 1)
+    assert.strictEqual(r.state.phase, "idle")
+  },
+  "an on-time break end still starts the next block": () => {
+    const S = Model.cleanSettings({ autoStartFocus: true })
+    const brk = Object.assign(Model.initialState(), { phase: "short", running: true, startedAt: 0, endsAt: 5 * MIN, durationMs: 5 * MIN, cycle: 1, project: "api" })
+    assert.strictEqual(Model.next(brk, { type: "tick" }, 5 * MIN + 500, S).state.phase, "focus")
+  },
+  "rehydrate puts the block's protections back": () => {
+    const S = Model.cleanSettings({})
+    const st = Model.next(Model.initialState(), { type: "start", project: "api" }, 0, S).state
+    assert.deepStrictEqual(types(Model.rehydrate(st, 10 * MIN, S).effects), ["silence-on", "rehide"])
+    const quiet = Model.cleanSettings({ silenceNotifications: false })
+    assert.deepStrictEqual(types(Model.rehydrate(st, 10 * MIN, quiet).effects), ["rehide"])
+    const paused = Model.next(st, { type: "pause" }, MIN, S).state
+    assert.deepStrictEqual(types(Model.rehydrate(paused, 10 * MIN, S).effects), ["silence-on", "rehide"])
+  },
+
   "blocklist ignores empty and one-letter terms": () => {
     assert.deepStrictEqual(Model.parseBlocklist(" , ,"), [])
     assert.deepStrictEqual(Model.parseBlocklist("YouTube, x, ,Discord "), ["youtube", "discord"])
@@ -244,7 +278,7 @@ const cases = {
     const r = Model.rehydrate(JSON.parse(JSON.stringify(st)), 10 * MIN, S)
     assert.strictEqual(r.state.phase, "focus")
     assert.strictEqual(Model.remainingMs(r.state, 10 * MIN), 15 * MIN)
-    assert.deepStrictEqual(r.effects, [])
+    assert.deepStrictEqual(r.effects.filter(e => e.type === "record"), [])
   },
   "rehydrate after the block ended closes it at endsAt": () => {
     const S = Model.cleanSettings({})

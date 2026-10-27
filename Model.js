@@ -236,10 +236,14 @@ function afterFocus(state, end, completed, settings, effects) {
   return enter(st, kind, end, settings.autoStartBreaks, settings)
 }
 
-function afterBreak(state, end, settings, effects) {
+// Auto-start only right after the break really ended; after a suspend or a
+// shell outage, starting at a past time would invent blocks nobody worked.
+var AUTO_START_GRACE = MINUTE
+
+function afterBreak(state, end, now, settings, effects) {
   var st = copy(state)
   if (state.phase === "long") st.cycle = 0
-  if (settings.autoStartFocus) return startFocus(st, end, settings, effects)
+  if (settings.autoStartFocus && now - end <= AUTO_START_GRACE) return startFocus(st, end, settings, effects)
   var idle = initialState()
   idle.cycle = st.cycle
   idle.project = st.project
@@ -287,7 +291,7 @@ function next(state, event, now, settings) {
       st = afterFocus(state, state.endsAt, true, settings, effects)
     } else {
       effects.push({ type: "record", entry: entryFor(state, state.endsAt, true, state.durationMs) })
-      st = afterBreak(state, state.endsAt, settings, effects)
+      st = afterBreak(state, state.endsAt, now, settings, effects)
     }
     break
   case "skip":
@@ -295,7 +299,7 @@ function next(state, event, now, settings) {
       endFocus(state, now, false, state.durationMs - left, settings, effects)
       st = afterFocus(state, now, false, settings, effects)
     } else if (state.phase !== "idle") {
-      st = afterBreak(state, now, settings, effects)
+      st = afterBreak(state, now, now, settings, effects)
     }
     break
   case "stop":
@@ -327,6 +331,12 @@ function rehydrate(saved, now, settings) {
     if (r.effects.length === 0) break
     st = r.state
     effects = effects.concat(r.effects)
+  }
+  // A focus block survived the restart: silence and hidden windows were given
+  // back when the old service went away, so put them back.
+  if (st.phase === "focus") {
+    if (settings.silenceNotifications) effects.push({ type: "silence-on" })
+    effects.push({ type: "rehide" })
   }
   return { state: st, effects: effects }
 }
@@ -474,13 +484,27 @@ function parseBlocklist(text) {
   return out
 }
 
-// The term that flags a window, matched against its class or its title (so
-// YouTube counts inside any browser), or "" when the window is fine.
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+// Whole words only, so "discord" leaves "discord-bot" alone; a term with a dot
+// is a domain, so "x.com" does not catch "dropbox.com" or "netflix.com".
+function termPattern(term) {
+  var left = term.indexOf(".") >= 0 ? "(^|[^a-z0-9_.-])" : "(^|[^a-z0-9_-])"
+  return new RegExp(left + escapeRegExp(term) + "($|[^a-z0-9_-])")
+}
+
+// The term that flags a window, matched against its class (which may carry a
+// suffix, as in steam_app_123) or its title (so YouTube counts inside any
+// browser), or "" when the window is fine.
 function blockedBy(list, windowClass, title) {
   var cls = String(windowClass || "").toLowerCase()
   var ttl = String(title || "").toLowerCase()
   for (var i = 0; i < list.length; i++) {
-    if ((cls && cls.indexOf(list[i]) >= 0) || (ttl && ttl.indexOf(list[i]) >= 0)) return list[i]
+    var pattern = termPattern(list[i])
+    if (cls && (cls.indexOf(list[i]) === 0 || pattern.test(cls))) return list[i]
+    if (ttl && pattern.test(ttl)) return list[i]
   }
   return ""
 }

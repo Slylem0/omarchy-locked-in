@@ -45,13 +45,26 @@ Item {
   property var kept: ({})
   property bool loaded: false
   property string pendingProject: ""
+  property bool detectBeforeStart: false
   property var pendingRecords: []
 
   // --- controls ---------------------------------------------------------------
 
+  // Without a project, look at the focused window right now: the one detected
+  // at load time is stale by the time a key starts a block.
   function start(project) {
     if (root.inFocus) return
-    root.pendingProject = String(project || "") || root.detectedProject || root.session.project
+    var named = String(project || "")
+    if (!named) {
+      root.detectBeforeStart = true
+      root.refreshProject()
+      return
+    }
+    root.pendingProject = named
+    root.queryDndAndBegin()
+  }
+
+  function queryDndAndBegin() {
     if (root.settings.silenceNotifications) dndQuery.running = true
     else root.beginFocus()
   }
@@ -75,7 +88,8 @@ Item {
   function stop() { root.send({ type: "stop" }) }
 
   function refreshProject() {
-    if (!projectProc.running) projectProc.running = true
+    if (projectProc.running) return
+    projectProc.running = true
   }
 
   // --- island faces -----------------------------------------------------------
@@ -122,6 +136,10 @@ Item {
       break
     case "release-hidden":
       root.releaseHidden()
+      break
+    case "rehide":
+      for (var h = 0; h < root.hidden.length; h++)
+        root.dispatch('hl.dsp.window.move({ workspace = "special:locked-in", follow = false, window = "address:' + root.hidden[h].address + '" })')
       break
     case "island":
       if (!live) break
@@ -335,7 +353,13 @@ Item {
     command: [root.helper, "project"]
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.detectedProject = String(text || "").trim()
+      onStreamFinished: {
+        root.detectedProject = String(text || "").trim()
+        if (!root.detectBeforeStart) return
+        root.detectBeforeStart = false
+        root.pendingProject = root.detectedProject || root.session.project
+        root.queryDndAndBegin()
+      }
     }
   }
 
