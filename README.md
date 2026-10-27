@@ -44,6 +44,20 @@ omarchy plugin enable slylem0.locked-in
 Enabling places the widget on the right of the bar. Move it with
 `omarchy bar move slylem0.locked-in --section left`.
 
+## Remove
+
+```bash
+omarchy plugin remove slylem0.locked-in
+```
+
+If a block is running, Locked In turns do-not-disturb back to how it was and
+returns any hidden windows before it goes. Your history stays in
+`~/.local/state/locked-in/`; delete that folder to remove it too:
+
+```bash
+rm -rf ~/.local/state/locked-in
+```
+
 ## Settings
 
 From the widget's settings, or inline in its `shell.json` entry:
@@ -149,7 +163,9 @@ sabe en qué proyecto estás sin preguntarte.
    duración de tus bloques si no hay ninguno corriendo.
 
 Instálalo con los comandos de *Install* y elige el idioma en los ajustes del
-widget (`language: es`). Todo sigue el tema de Omarchy y funciona con la barra
+widget (`language: es`). Para desinstalarlo usa
+`omarchy plugin remove slylem0.locked-in`; tu historial queda en
+`~/.local/state/locked-in/` por si quieres borrarlo también. Todo sigue el tema de Omarchy y funciona con la barra
 estándar o con barras de terceros.
 
 ## License
